@@ -1,0 +1,136 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Kaavu - Kerala Horror</title>
+<style>body{margin:0;background:#000;overflow:hidden;font-family:sans-serif;color:#ddd}
+#ui{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000d;z-index:3;gap:10px;text-align:center}
+#hud{position:fixed;top:10px;left:12px;z-index:2;text-shadow:0 0 4px #000}
+#flash{position:fixed;inset:0;background:#000;opacity:0;transition:opacity .4s;pointer-events:none;z-index:2}
+input,button{padding:8px;font-size:16px}</style></head><body>
+<div id="ui"><h1>കാവ് &middot; Kaavu</h1><p>Find all 5 vilakku lamps together. Do not let the Yakshi catch you.</p>
+<input id="name" placeholder="Your name"><input id="room" placeholder="Room code" value="village">
+<button id="go">Enter the village</button><p id="msg"></p><small>WASD move &middot; Shift sprint &middot; F torch &middot; Mouse look</small></div>
+<div id="hud"></div><div id="flash"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id),R=Math.random;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x05070d);scene.fog=new THREE.FogExp2(0x05070d,.045);
+const cam=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,150);cam.rotation.order='YXZ';
+const ren=new THREE.WebGLRenderer({antialias:true});ren.setSize(innerWidth,innerHeight);document.body.appendChild(ren.domElement);
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight)});
+scene.add(new THREE.AmbientLight(0x223355,.4));
+const moon=new THREE.DirectionalLight(0x5566aa,.3);moon.position.set(20,50,10);scene.add(moon);
+const torch=new THREE.SpotLight(0xffd9a0,3,40,.5,.5,1);torch.position.set(.2,-.1,0);torch.target.position.set(0,0,-5);cam.add(torch,torch.target);scene.add(cam);
+
+const M=c=>new THREE.MeshStandardMaterial({color:c,roughness:1});
+const box=(w,h,d,x,y,z,c)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,y,z);scene.add(m);return m};
+const rects=[],circs=[];
+function wall(x1,z1,x2,z2){const t=.6,h=3.2;box(Math.abs(x2-x1)+t,h,Math.abs(z2-z1)+t,(x1+x2)/2,h/2,(z1+z2)/2,0xb59a7a);
+ rects.push([Math.min(x1,x2)-t/2,Math.min(z1,z2)-t/2,Math.max(x1,x2)+t/2,Math.max(z1,z2)+t/2])}
+
+// ---- Map: ground, road, tharavadu house, well, kaavu, backwater, jetty ----
+const gr=new THREE.Mesh(new THREE.PlaneGeometry(200,200),M(0x14230f));gr.rotation.x=-Math.PI/2;scene.add(gr);
+box(5,.02,50,0,.01,22,0x3a2e22);
+[[-12,-20,12,-20],[-12,-20,-12,0],[12,-20,12,0],[-12,0,-2,0],[2,0,12,0],[-5,-20,-5,-12],[-5,-8,-5,0],[5,-20,5,-12],[5,-8,5,0]].forEach(w=>wall(...w));
+box(7.8,.5,20.8,-8.75,3.45,-10,0x6b2d22);box(7.8,.5,20.8,8.75,3.45,-10,0x6b2d22); // tiled roofs, open nadumuttam between
+const well=new THREE.Mesh(new THREE.CylinderGeometry(.9,.9,1,12),M(0x666666));well.position.set(0,.5,-10);scene.add(well);circs.push([0,-10,1]);
+for(let i=0;i<5;i++){const a=i*1.26,x=-40+Math.cos(a)*2.2,z=-30+Math.sin(a)*2.2;box(.5,1,.3,x,.5,z,0x555a55);circs.push([x,z,.4])} // serpent stones
+const water=new THREE.Mesh(new THREE.PlaneGeometry(40,100),new THREE.MeshStandardMaterial({color:0x0b2a3a,roughness:.2,metalness:.5}));
+water.rotation.x=-Math.PI/2;water.position.set(58,-.2,-20);scene.add(water);
+box(10,.2,2,41,.1,-4,0x5a4128);box(4,.5,1.5,43,-.1,-8.5,0x3a2a1a);
+
+// ---- Palms, kaavu thicket, rubber-plantation rows ----
+const L=[[-8,-10],[3.5,-14],[-40,-30],[44,-4],[24.5,-49.5]],T=[]; // lamp spots (same as server)
+let seed=7;const rs=()=>(seed=seed*16807%2147483647)/2147483647;
+const free=(x,z)=>Math.abs(x)<62&&Math.abs(z)<62&&!(Math.abs(x)<4&&z>-2)&&!(Math.abs(x)<16&&z>-24&&z<5)&&x<36&&Math.hypot(x+40,z+30)>4.5&&L.every(l=>Math.hypot(x-l[0],z-l[1])>3);
+for(let i=0;i<170;i++){const x=(rs()-.5)*124,z=(rs()-.5)*124;if(free(x,z)&&!(x>8&&z<-36))T.push([x,z])}
+for(let i=0;i<70;i++){const a=rs()*6.28,r=4.5+rs()*10,x=-40+Math.cos(a)*r,z=-30+Math.sin(a)*r;if(free(x,z))T.push([x,z])}
+for(let i=0;i<5;i++)for(let j=0;j<6;j++){const x=12+i*5,z=-62+j*5;if(free(x,z))T.push([x,z])}
+const lg=new THREE.BoxGeometry(.5,.05,3.2);lg.translate(0,0,1.6);
+const tm=new THREE.InstancedMesh(new THREE.CylinderGeometry(.15,.25,1,6),M(0x4a3a2a),T.length),lm=new THREE.InstancedMesh(lg,M(0x1f4a22),T.length*6),o=new THREE.Object3D();o.rotation.order='YXZ';
+T.forEach(([x,z],i)=>{const h=6+rs()*3;o.position.set(x,h/2,z);o.rotation.set(0,0,0);o.scale.set(1,h,1);o.updateMatrix();tm.setMatrixAt(i,o.matrix);
+ for(let k=0;k<6;k++){o.position.set(x,h,z);o.scale.set(1,1,1);o.rotation.set(.5,k*1.047+i,0);o.updateMatrix();lm.setMatrixAt(i*6+k,o.matrix)}circs.push([x,z,.5])});
+scene.add(tm,lm);
+
+// ---- Lamps (vilakku) ----
+const lamps=L.map(([x,z])=>{const g=new THREE.Group(),b=new THREE.Mesh(new THREE.CylinderGeometry(.2,.3,.6,8),M(0x8a6a2a)),
+ f=new THREE.Mesh(new THREE.SphereGeometry(.18,8,8),new THREE.MeshBasicMaterial({color:0xffc060})),p=new THREE.PointLight(0xff9a40,1.4,9);
+ b.position.y=.3;f.position.y=.8;p.position.y=1;g.add(b,f,p);g.position.set(x,0,z);scene.add(g);g.p=p;return g});
+
+// ---- Spirit (Yakshi) and other players ----
+const sp=new THREE.Group(),bm=new THREE.MeshStandardMaterial({color:0xeeeeee,emissive:0x444444});
+const sb=new THREE.Mesh(new THREE.ConeGeometry(.55,2.3,8),bm),sh=new THREE.Mesh(new THREE.SphereGeometry(.22,8,8),bm),shr=new THREE.Mesh(new THREE.BoxGeometry(.5,1.8,.12),M(0x020202));
+sb.position.y=1.15;sh.position.y=2.45;shr.position.set(0,1.6,-.25);sp.add(sb,sh,shr);sp.position.set(0,0,-30);scene.add(sp);
+let spT={x:0,z:-30};
+function mkPlayer(id){const g=new THREE.Group(),c=new THREE.Color().setHSL(id*.37%1,.6,.5);
+ const bd=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,1.3,8),new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.3}));bd.position.y=.65;
+ const h=new THREE.Mesh(new THREE.SphereGeometry(.22,8,8),M(0xc79a6b));h.position.y=1.55;
+ const t=new THREE.Mesh(new THREE.SphereGeometry(.08,6,6),new THREE.MeshBasicMaterial({color:0xffe9a0}));t.position.set(.3,1.1,-.4);
+ g.add(bd,h,t);scene.add(g);return g}
+
+// ---- Rain ----
+const RN=1200,rp=new Float32Array(RN*6);
+for(let i=0;i<RN;i++){const x=(R()-.5)*30,y=R()*15,z=(R()-.5)*30;rp.set([x,y,x?z:z,x,y-.5,z],i*6)}
+const rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.BufferAttribute(rp,3));
+const rain=new THREE.LineSegments(rg,new THREE.LineBasicMaterial({color:0x8899bb,transparent:true,opacity:.35}));rain.frustumCulled=false;scene.add(rain);
+
+// ---- Audio: rain ambience + heartbeat near the spirit ----
+let AC;
+function audio(){AC=new AudioContext();const b=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=R()*2-1;
+ const n=AC.createBufferSource(),f=AC.createBiquadFilter(),g=AC.createGain();n.buffer=b;n.loop=true;f.type='lowpass';f.frequency.value=900;g.gain.value=.12;n.connect(f).connect(g).connect(AC.destination);n.start()}
+function thump(v){const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=55;g.gain.setValueAtTime(v,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+.25);o.connect(g).connect(AC.destination);o.start();o.stop(AC.currentTime+.3)}
+
+// ---- Collision ----
+function collide(p,px){
+ for(const [x1,z1,x2,z2] of rects){const cx=Math.max(x1,Math.min(p.x,x2)),cz=Math.max(z1,Math.min(p.z,z2)),dx=p.x-cx,dz=p.z-cz,d=Math.hypot(dx,dz);
+  if(d<.4){if(d>1e-4){p.x=cx+dx/d*.4;p.z=cz+dz/d*.4}else p.x=x1-.4}}
+ for(const [x,z,r] of circs){const dx=p.x-x,dz=p.z-z,d=Math.hypot(dx,dz),m=r+.4;if(d<m&&d>1e-4){p.x=x+dx/d*m;p.z=z+dz/d*m}}
+ p.x=Math.max(-64,Math.min(64,p.x));p.z=Math.max(-64,Math.min(64,p.z));
+ if(p.x>37){if(px<=37&&(p.z<-4.7||p.z>-3.3))p.x=37;else{p.z=Math.max(-4.7,Math.min(-3.3,p.z));p.x=Math.min(46,p.x)}}
+}
+
+// ---- Networking ----
+let ws,myId=0,others={},taken=[],names='',won=0,alive=true,torchOn=true,full=false;
+const me={x:0,z:45,ry:0,pitch:0},keys={},pend=L.map(()=>-1e4);
+$('go').onclick=()=>{audio();full=false;
+ ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
+ ws.onopen=()=>ws.send(JSON.stringify({t:'join',name:$('name').value||'Friend',room:$('room').value||'village'}));
+ ws.onmessage=onMsg;ws.onclose=()=>{if(!full){$('ui').style.display='flex';$('msg').textContent='Disconnected from server'}};
+ $('ui').style.display='none';ren.domElement.requestPointerLock()};
+ren.domElement.onclick=()=>ren.domElement.requestPointerLock();
+function onMsg(e){const d=JSON.parse(e.data);
+ if(d.t==='init'){myId=d.id}
+ else if(d.t==='full'){full=true;document.exitPointerLock();$('ui').style.display='flex';$('msg').textContent='Room is full (max 4 players)'}
+ else if(d.t==='caught'){alive=false;$('flash').style.opacity=1;setTimeout(()=>{me.x=(R()-.5)*4;me.z=45;alive=true;$('flash').style.opacity=0},3000)}
+ else if(d.t==='s'){spT={x:d.s[0],z:d.s[1]};taken=d.l;won=d.w;lamps.forEach((g,i)=>g.visible=!taken.includes(i));
+  const seen={};for(const [id,n,x,z,ry] of d.p){if(id===myId)continue;seen[id]=1;const g=others[id]||(others[id]=mkPlayer(id));g.t={x,z,ry}}
+  for(const id in others)if(!seen[id]){scene.remove(others[id]);delete others[id]}
+  names=d.p.map(p=>p[1]).join(', ');
+  $('hud').innerHTML='Lamps lit: '+taken.length+'/'+L.length+'<br>Players: '+names+(won?'<br><b>You lit every vilakku! The village is safe. Restarting...</b>':'')}}
+
+// ---- Input ----
+addEventListener('keydown',e=>{keys[e.code]=1;if(e.code==='KeyF')torchOn=!torchOn});
+addEventListener('keyup',e=>keys[e.code]=0);
+addEventListener('mousemove',e=>{if(document.pointerLockElement){me.ry-=e.movementX*.0025;me.pitch=Math.max(-1.3,Math.min(1.3,me.pitch-e.movementY*.0025))}});
+
+// ---- Main loop ----
+let last=performance.now(),stam=1,beat=0,send=0;
+function loop(t){requestAnimationFrame(loop);const dt=Math.min(.05,(t-last)/1000);last=t;let moving=0,run=0;
+ if(myId&&alive){const f=(keys.KeyW?1:0)-(keys.KeyS?1:0),s=(keys.KeyD?1:0)-(keys.KeyA?1:0);moving=f||s;
+  run=keys.ShiftLeft&&stam>0&&moving;stam=Math.max(0,Math.min(1,stam+(run?-.25:.15)*dt));
+  const spd=run?5.6:3.2,l=Math.hypot(f,s)||1,px=me.x;
+  me.x+=(-Math.sin(me.ry)*f+Math.cos(me.ry)*s)/l*spd*dt;me.z+=(-Math.cos(me.ry)*f-Math.sin(me.ry)*s)/l*spd*dt;collide(me,px);
+  L.forEach(([x,z],i)=>{if(!taken.includes(i)&&Math.hypot(me.x-x,me.z-z)<1.8&&t-pend[i]>1500){pend[i]=t;ws.send(JSON.stringify({t:'pickup',id:i}))}});
+  send-=dt;if(send<=0&&ws.readyState===1){send=.066;ws.send(JSON.stringify({t:'pos',x:me.x,z:me.z,ry:me.ry}))}}
+ cam.position.set(me.x,1.6+(moving?Math.sin(t*(run?.014:.009))*.04:0),me.z);cam.rotation.set(me.pitch,me.ry,0);
+ // spirit
+ sp.position.x+=(spT.x-sp.position.x)*.2;sp.position.z+=(spT.z-sp.position.z)*.2;sp.position.y=.15+Math.sin(t*.003)*.1;
+ sp.rotation.y=Math.atan2(me.x-sp.position.x,me.z-sp.position.z);
+ const d=Math.hypot(me.x-sp.position.x,me.z-sp.position.z);
+ torch.intensity=torchOn?3*(d<12&&R()>.85?.2:.9+R()*.1):0;
+ beat-=dt;if(AC&&d<25&&beat<=0){thump(.7*(1-d/25)+.05);beat=.35+d/25*.8}
+ lamps.forEach(g=>g.p.intensity=1.2+R()*.4);
+ for(const id in others){const g=others[id];if(g.t){g.position.x+=(g.t.x-g.position.x)*.2;g.position.z+=(g.t.z-g.position.z)*.2;g.rotation.y=g.t.ry}}
+ // rain
+ const a=rg.attributes.position.array;for(let i=0;i<RN;i++){const k=i*6+1;a[k]-=18*dt;a[k+3]-=18*dt;if(a[k+3]<0){a[k]+=15;a[k+3]+=15}}
+ rg.attributes.position.needsUpdate=true;rain.position.set(me.x,0,me.z);
+ ren.render(scene,cam)}
+requestAnimationFrame(loop);
+</script></body></html>
